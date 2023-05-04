@@ -1,26 +1,32 @@
-# Stage 1 - Install dependencies
-FROM debian:latest AS build-env
+# Set the base image to the official Flutter image
+FROM google/dart:latest as builder
 
-# Install flutter dependencies
-RUN apt-get update 
-RUN apt-get install -y curl git wget unzip libgconf-2-4 gdb libstdc++6 libglu1-mesa fonts-droid-fallback lib32stdc++6 python3
-RUN apt-get clean
+# Set the working directory to the root of the project
+WORKDIR /app
 
-# Clone the flutter repo
-RUN git clone https://github.com/flutter/flutter.git /usr/local/flutter
+# Copy the pubspec.* files to the container and get dependencies
+COPY pubspec.* ./
+RUN dart pub get
 
-# Set flutter path
-ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:${PATH}"
+# Copy the rest of the project to the container
+COPY . .
 
-# Run flutter doctor
-RUN flutter doctor -v
+# Build the Flutter app for release
+RUN dart pub run build_runner build --delete-conflicting-outputs && \
+    dart compile exe bin/main.dart -o /app/app
 
-# Enable flutter web
-RUN flutter channel master
-RUN flutter upgrade
-RUN flutter config --enable-web
+# Set the base image to a minimal Dart runtime image
+FROM google/dart:slim
 
-# Stage 2 - Create the run-time image
-FROM nginx:1.21.1-alpine
-COPY build /usr/share/nginx/html
+# Copy the Flutter app from the builder image
+COPY --from=builder /app/app /app
+
+# Set the working directory to the root of the app
+WORKDIR /app
+
+# Expose the default Flutter port
+EXPOSE 8080
+
+# Start the Flutter app
+CMD ["/app/app"]
 
